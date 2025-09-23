@@ -14,46 +14,50 @@ import (
 	"stkpush-go/internal/handler"
 )
 
+const defaultPort = "4000"
+
 func main() {
-	// Get port from environment variable or default to 4000
+	// Determine server port
 	port := os.Getenv("PORT")
 	if port == "" {
-		port = "4000"
+		port = defaultPort
 	}
 
-	// Use release mode for production
+	// Use release mode in production
 	gin.SetMode(gin.ReleaseMode)
 
 	// Initialize router
-	r := gin.Default()
-	r.GET("/stk", handler.STKPushHandler)
+	router := gin.New()
+	router.Use(gin.Recovery()) // panic recovery middleware
+	router.GET("/stk", handler.STKPushHandler)
 
-	// Create HTTP server
+	// HTTP server configuration
 	srv := &http.Server{
 		Addr:    fmt.Sprintf(":%s", port),
-		Handler: r,
+		Handler: router,
 	}
 
-	// Start server in a goroutine
+	// Run server in a separate goroutine
 	go func() {
-		log.Printf("Server running on port %s\n", port)
+		log.Printf("Server started on port %s", port)
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Fatalf("Failed to start server: %v", err)
+			log.Fatalf("Server encountered an error: %v", err)
 		}
 	}()
 
-	// Wait for interrupt signal for graceful shutdown
+	// Wait for termination signal for graceful shutdown
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
-	log.Println("Shutting down server...")
+	log.Println("Shutdown signal received, shutting down server...")
 
 	// Graceful shutdown with timeout
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
+
 	if err := srv.Shutdown(ctx); err != nil {
 		log.Fatalf("Server forced to shutdown: %v", err)
 	}
 
-	log.Println("Server exited properly")
+	log.Println("Server exited gracefully")
 }
